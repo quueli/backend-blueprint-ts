@@ -1,0 +1,10 @@
+// copy or symlink this folder into the consumer's prisma/schema/
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["prismaSchemaFolder"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
