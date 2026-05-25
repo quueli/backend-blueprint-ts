@@ -1,0 +1,63 @@
+enum LeadStatus {
+  NEW
+  CONTACTED
+  WORKING
+  BRIEF
+  CONTRACT
+  WON
+  LOST
+  SPAM
+  ARCHIVED
+}
+
+enum ContactChannel {
+  PHONE
+  TELEGRAM
+  EMAIL
+}
+
+model Lead {
+  id         String         @id @default(cuid())
+  refNo      Int            @default(autoincrement())
+  name       String
+  phone      String?
+  email      String?
+  telegram   String?
+  channel    ContactChannel @default(EMAIL)
+  budget     String?
+  message    String         @db.Text
+  tags       String[]
+  source     String?
+  status     LeadStatus     @default(NEW)
+  ownerId    String?
+  owner      User?          @relation("LeadOwner", fields: [ownerId], references: [id])
+  comments   Comment[]
+  ip         String?
+  userAgent  String?        @db.Text
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  // Pool membership is derived from archivedAt: null = active pool, set = archive pool.
+  archivedAt DateTime?
+  // Unread indicator for the admin inbox: null = unread, set = read by an admin.
+  readAt     DateTime?
+
+  @@index([status, createdAt])
+  @@index([status, archivedAt])
+  // Active/archive pool listing + pagination ordered by recency.
+  @@index([archivedAt, createdAt])
+  // Unread badge count (readAt IS NULL within the active pool).
+  @@index([readAt])
+  @@index([ownerId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  leadId    String
+  authorId  String
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id])
+
+  @@index([leadId, createdAt])
+}
