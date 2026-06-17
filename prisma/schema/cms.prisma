@@ -1,0 +1,15 @@
+model PageBlock {
+  key             String    @id
+  value           Json
+  draftValue      Json?
+  publishedValue  Json?
+  publishedAt     DateTime?
+  updatedAt       DateTime  @updatedAt
+  updatedBy       String?
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
