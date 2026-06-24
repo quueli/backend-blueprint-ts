@@ -7,6 +7,7 @@ import { sendMail, smtpConfigured, type LeadEmailTemplates, defaultLeadEmailTemp
 import { notifyTelegram } from '../integrations/telegram.js';
 import { pushToCrm } from '../integrations/crm.js';
 import { enforceAllLeadStacks } from './policy.js';
+import { notifyLeadsChanged } from './events.js';
 
 export type LeadPipelineConfig = {
   prisma: PrismaClientLike;
@@ -16,6 +17,7 @@ export type LeadPipelineConfig = {
   siteName?: string;
   onLeadCreated?: (lead: { id: string; refNo: number; name: string }) => void;
   enforceStacks?: boolean;
+  emitEvents?: boolean;
 };
 
 export type LeadPipelineRequest = {
@@ -106,6 +108,19 @@ export function createLeadPipeline(config: LeadPipelineConfig) {
       );
     }
 
+    if (smtpConfigured(env) && lead.email && env.AUTO_REPLY_ENABLED !== 'false' && templates.renderAutoReply) {
+      jobs.push(
+        sendMail(
+          {
+            to: lead.email,
+            subject: `${siteName}, lead received`,
+            html: templates.renderAutoReply(lead),
+          },
+          env,
+        ),
+      );
+    }
+
     jobs.push(notifyTelegram(`<b>New lead</b>\n${lead.name}\n${lead.message.slice(0, 200)}`, env));
     jobs.push(
       pushToCrm(
@@ -115,6 +130,9 @@ export function createLeadPipeline(config: LeadPipelineConfig) {
           name: lead.name,
           phone: lead.phone,
           email: lead.email,
+          telegram: lead.telegram,
+          channel: lead.channel,
+          budget: lead.budget,
           message: lead.message,
           source: lead.source,
         },
@@ -122,6 +140,7 @@ export function createLeadPipeline(config: LeadPipelineConfig) {
       ),
     );
 
+    // not awaited on purpose, the client should not wait for smtp/telegram
     Promise.all(jobs).catch((e) => console.error('lead notify failed', e));
 
     if (config.enforceStacks !== false) {
@@ -130,6 +149,10 @@ export function createLeadPipeline(config: LeadPipelineConfig) {
       } catch (e) {
         console.error('[leads] stack enforcement failed', e);
       }
+    }
+
+    if (config.emitEvents !== false) {
+      notifyLeadsChanged('lead.created');
     }
 
     config.onLeadCreated?.(lead);
