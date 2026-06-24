@@ -1,22 +1,57 @@
 {
   "name": "backend-blueprint",
-  "version": "0.1.0",
-  "description": "Backend toolkit for Next.js sites",
+  "version": "1.0.0",
+  "description": "Backend toolkit for Next.js sites: auth, a lead-intake pipeline, CMS blocks, admin guards, and a few integrations",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./prisma/schema/*": "./prisma/schema/*"
+  },
+  "bin": {
+    "backend-blueprint": "./dist/cli/init.js"
+  },
   "files": [
-    "dist"
+    "dist",
+    "prisma",
+    "templates",
+    "deploy"
   ],
   "scripts": {
     "build": "tsc",
-    "test": "tsx --test tests/*.test.ts"
+    "generate": "prisma generate",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1067.0",
+    "bcryptjs": "^2.4.3",
+    "imapflow": "^1.0.164",
+    "next": "^14.2.5",
+    "nodemailer": "^7.0.7",
     "zod": "^3.23.8"
   },
+  "peerDependencies": {
+    "@prisma/client": "^5.18.0",
+    "next": "^14.2.0",
+    "next-auth": "^4.24.0"
+  },
+  "peerDependenciesMeta": {
+    "next": { "optional": false }
+  },
   "devDependencies": {
+    "@prisma/client": "^5.18.0",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.14.10",
+    "@types/nodemailer": "^6.4.15",
+    "next-auth": "^4.24.7",
+    "prisma": "^5.18.0",
     "tsx": "^4.16.2",
     "typescript": "^5.5.3"
   },
