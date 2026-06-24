@@ -4,6 +4,7 @@ import {
   LIMIT_ARCHIVE_TAG,
   PROTECTED_STATUSES,
 } from './labels.js';
+import { notifyLeadsChanged } from './events.js';
 
 export type LeadPolicy = {
   maxActive: number;
@@ -31,6 +32,7 @@ export function normalizeLeadPolicy(value: unknown): LeadPolicy {
   };
 }
 
+// loose args so the real client and the in-memory test double both fit
 export type LeadStackStore = {
   lead: {
     count(args?: any): Promise<number>;
@@ -42,12 +44,12 @@ export type LeadStackStore = {
   setting: { findUnique(args: any): Promise<{ value: unknown } | null> };
 };
 
-export type EnforceResult = { archived: number; deleted: number };
-
 export async function getLeadPolicy(prisma: LeadStackStore): Promise<LeadPolicy> {
   const row = await prisma.setting.findUnique({ where: { key: 'leadPolicy' } });
   return normalizeLeadPolicy(row?.value);
 }
+
+export type EnforceResult = { archived: number; deleted: number };
 
 export async function enforceAllLeadStacks(prisma: LeadStackStore, policy?: LeadPolicy): Promise<EnforceResult> {
   const p = policy ?? (await getLeadPolicy(prisma));
@@ -61,7 +63,10 @@ export async function enforceActiveLeadStack(prisma: LeadStackStore, policy?: Le
   const active = await prisma.lead.count({ where: activeLeadWhere() });
   const overflow = active - p.maxActive;
   if (overflow <= 0) return 0;
-  return pushOldestActiveToArchive(prisma, overflow);
+
+  const archived = await pushOldestActiveToArchive(prisma, overflow);
+  if (archived > 0) notifyLeadsChanged('lead.stack_archive');
+  return archived;
 }
 
 export async function enforceArchivedLeadStack(prisma: LeadStackStore, policy?: LeadPolicy): Promise<number> {
@@ -69,7 +74,10 @@ export async function enforceArchivedLeadStack(prisma: LeadStackStore, policy?: 
   const archivedCount = await prisma.lead.count({ where: archivedLeadWhere() });
   const overflow = archivedCount - p.maxArchived;
   if (overflow <= 0) return 0;
-  return deleteOldestArchived(prisma, overflow);
+
+  const deleted = await deleteOldestArchived(prisma, overflow);
+  if (deleted > 0) notifyLeadsChanged('lead.stack_evict');
+  return deleted;
 }
 
 async function pushOldestActiveToArchive(prisma: LeadStackStore, count: number): Promise<number> {
@@ -85,6 +93,7 @@ async function pushOldestActiveToArchive(prisma: LeadStackStore, count: number):
   for (const v of victims) {
     const tags: string[] = Array.isArray(v.tags) ? v.tags : [];
     const nextTags = tags.includes(LIMIT_ARCHIVE_TAG) ? tags : [...tags, LIMIT_ARCHIVE_TAG];
+    // status stays as it was, a CONTRACT lead is still protected down here
     await prisma.lead.update({
       where: { id: v.id },
       data: { archivedAt: now, tags: nextTags },
@@ -105,6 +114,7 @@ async function pushOldestActiveToArchive(prisma: LeadStackStore, count: number):
   return victims.length;
 }
 
+// the archive can grow past maxArchived if it is full of protected deals, that is on purpose
 async function deleteOldestArchived(prisma: LeadStackStore, count: number): Promise<number> {
   const victims = await prisma.lead.findMany({
     where: { ...archivedLeadWhere(), status: { notIn: [...PROTECTED_STATUSES] } },
